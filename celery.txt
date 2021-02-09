@@ -1,0 +1,98 @@
+====================================== Установка и настройка =================================================================
+1) установить celery: 
+	
+	pipenv install celery
+
+2) запустить брокер redis в docker контейнере: 
+			
+	docker run -d -p 6379:6379 redis
+
+
+3)далее в папке config проэкта необходимо создать файл celery_settings.py co следующим содержимым:
+
+	import os
+
+	from celery import Celery
+
+
+	os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+	app = Celery('doge_click')
+
+	# первый аргумент указывает на settings.py. воторой говорит подцеплять из файла settings.py те настройки которые начинаются в нашем случае на 'CELERY':
+	app.config_from_object('django.conf:settings', namespace='CELERY')
+
+	app.autodiscover_tasks()
+	
+	
+4) далее в файле settings.py добавляем следующие настройки:
+	# следующие две переменные опциональны, прописаны для удобства 
+	REDIS_HOST = '0.0.0.0'
+	REDIS_PORT = '6379'
+	
+	# указывает celery на брокера, что бы тот смог к нему подключится
+	CELERY_BROKER_URL = 'redis://' + REDIS_HOST + ':' + REDIS_PORT + '/0'
+	CELERY_BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}
+	CELERY_RESULT_BACKEND = 'redis://' + REDIS_HOST + ':' + REDIS_PORT + '/0'
+	
+	# опционально
+	CELERY_ACCEPT_CONTENT = ['application/json']
+	CELERY_TASK_SERIALIZER = 'json'
+	CELERY_RESULT_SERIALIZER = 'json'
+	
+	
+5) в __init__.py конфигурационной папки необходимо:
+	
+	# импортировать app который регистрировали в файле celery.py
+	from .celery_settings import app as celery_app
+	
+	__all__ = ('celery_app')
+	
+	
+	
+======================================================= Таска ================================================================
+1)в приложении проекта создать файл tasks.py
+	from config.celery_settings import app
+	
+	@app.task
+	def run(somthing):
+	    print(something)
+	    
+	   
+2) что бы запустить таску из views нужно
+	from .tasks import run
+	
+	def get(request):
+	    # метод delay() позволяет не дожидаться ответа от функции run, тем самым выполняя её в фоне
+	    run.delay('somthing')
+	    
+	    
+3)запустить воркер
+	# doge_click(это имя celery app) -l info(видеть логи в консоли)
+	celery -A doge_click worker -l info
+	
+	
+	
+================================================ Периодические таски =============================================================
+
+1) в файле celery_settings.py нужно
+	
+	from celery.schedules import crontab
+	
+	
+	app.conf.beat_schedule = {
+	    'task_name' : {
+		'task': 'app_name.tasks.run',
+		'schedule': crontab(minute='*/2')
+	    }
+	}
+
+
+
+
+================================================ Термины ======================================================================
+Воркеры
+Консьюмеры
+таска
+
+	
